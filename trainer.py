@@ -12,7 +12,7 @@ import dataset
 import model
 
 
-ndef main():
+def main():
     # Args
     parser = ArgumentParser()
     parser.add_argument('--logdir', type=str)
