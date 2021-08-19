@@ -94,7 +94,7 @@ class Model(pl.LightningModule):
             x = x @ self.proj
         return x
 
-    def encode_target(self, text):
+    def encode_text(self, text):
         text = clip.tokenize(text, truncate=True).to(self.device)
         x = self.token_embedding(text)
         x = x + self.positional_embedding
@@ -107,19 +107,26 @@ class Model(pl.LightningModule):
 
     def compute_loss(self, image, context, target):
         source = self.encode_image(image, context)
-        target = self.encode_target(target)
+        target = self.encode_text(target)
         source = source / source.norm(dim=-1, keepdim=True)
         target = target / target.norm(dim=-1, keepdim=True)
         return self.loss.loss(source, target, device=self.device)
 
+    def unpack(self, batch):
+        x, y = batch
+        y = [l.split('\t') for l in y]
+        ctx = [t[0] for t in y]
+        tgt = [t[1] for t in y]
+        return (x, ctx, tgt)
+
     def training_step(self, batch, batch_idx):
-        x, ctx, y = batch
+        x, ctx, y = self.unpack(batch)
         loss = self.compute_loss(x, ctx, y)
         self.log('loss', loss, on_step=True, prog_bar=True)
         return loss
         
     def validation_step(self, batch, batch_idx):
-        x, ctx, y = batch
+        x, ctx, y = self.unpack(batch)
         loss = self.compute_loss(x, ctx, y)
         self.log('vloss', loss, on_epoch=True, prog_bar=True, sync_dist=True)
         return loss

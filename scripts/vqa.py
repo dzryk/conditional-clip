@@ -15,20 +15,14 @@ def save_text(datadir, split):
         questions = json.load(f)
     with open(apath, 'r') as f:
         answers = json.load(f)
-    for x in questions['questions']:
+    for (x, y) in zip(questions['questions'], answers['annotations']):
         key = x['image_id']
-        value = x['question']
-        fname = f'{prefix}_{str(key).zfill(12)}.ctx'
+        qvalue = x['question']
+        avalue = y['multiple_choice_answer']
+        fname = f'{prefix}_{str(key).zfill(12)}.txt'
         path = f'{datadir}/{split}/{fname}'
         with open(path, 'a') as f:
-            f.write(value + '\n')
-    for x in answers['annotations']:
-        key = x['image_id']
-        value = x['multiple_choice_answer']
-        fname = f'{prefix}_{str(key).zfill(12)}.tgt'
-        path = f'{datadir}/{split}/{fname}'
-        with open(path, 'a') as f:
-            f.write(value + '\n')
+            f.write(f'{qvalue}\t{avalue}\n')
 
 
 def main():
