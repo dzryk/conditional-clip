@@ -113,7 +113,7 @@ def encode(args, net):
     chunks_count = 0
     batches_per_chunk = args.chunk_size // args.batch_size
     for item, entry in tqdm(data):
-        text_features = net.encode_target(item)
+        text_features = net.encode_text(item)
         text_features /= text_features.norm(dim=-1, keepdim=True)
         text_embeddings.append(text_features.cpu().numpy().astype('float32'))
         batches_seen += 1
