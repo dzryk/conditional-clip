@@ -28,11 +28,11 @@ class VSELoss(nn.Module):
         super(VSELoss, self).__init__()
         self.hparams = hparams
     
-    def loss(self, x, y, mask, device):
+    def loss(self, x, y, device):
         """Maximum violation contrastive loss (VSE++)."""
 
         # Compute similarity scores and expand
-        scores = mask * x.mm(y.t())
+        scores = x.mm(y.t())
         diagonal = scores.diag().view(x.size(0), 1)
         d1 = diagonal.expand_as(scores)
         d2 = diagonal.t().expand_as(scores)
@@ -57,9 +57,9 @@ class XELoss(nn.Module):
         super(XELoss, self).__init__()
         self.hparams = hparams
 
-    def loss(self, x, y, mask, device):
+    def loss(self, x, y, device):
         """XELoss from CLIP."""
-        scores = mask * x.mm(y.t()) / self.hparams.temp
+        scores = x.mm(y.t()) / self.hparams.temp
         ground_truth = torch.arange(len(scores)).type_as(scores).long()
         cost_x = F.cross_entropy(scores, ground_truth)
         cost_y = F.cross_entropy(scores.t(), ground_truth)
@@ -91,7 +91,7 @@ class Model(pl.LightningModule):
         self.ctx_ln_final = copy.deepcopy(clip_model.ln_final)
         self.tgt_ln_final = copy.deepcopy(clip_model.ln_final)
         self.text_projection = clip_model.text_projection
-        self.W = nn.Linear(TXTDIM, VISDIM)
+        self.W = nn.Linear(TXTDIM, 2 * VISDIM)
         self.loss = XELoss(self.hparams)
         self.loss = LOSS_MAPPING[self.hparams.loss_fn](
             hparams=self.hparams)
@@ -115,13 +115,13 @@ class Model(pl.LightningModule):
         x = self.conv1(image)
         x = x.reshape(x.shape[0], x.shape[1], -1)
         x = x.permute(0, 2, 1)
-        x = torch.cat([self.class_embedding + ctx.unsqueeze(1), x], dim=1)
+        x = torch.cat([self.class_embedding + ctx[:,:VISDIM].unsqueeze(1), x], dim=1)
         x = x + self.visual_positional_embedding
         x = self.ln_pre(x)
         x = x.permute(1, 0, 2)
         x = self.visual_transformer(x)
         x = x.permute(1, 0, 2)
-        x = self.ln_post(x[:, 0, :] + ctx)
+        x = self.ln_post(x[:, 0, :] + ctx[:,VISDIM:])
         if self.proj is not None:
             x = x @ self.proj
         return x
@@ -138,22 +138,12 @@ class Model(pl.LightningModule):
         return x
 
 
-    def compute_mask(self, text):
-        mask = np.zeros((len(text), len(text)))
-        for i in range(len(text)):
-            for j in range(len(text)):
-                mask[i,j] = text[i] == text[j]
-        mask = (1 - mask) + np.eye(len(text))
-        return torch.tensor(mask).to(self.device)
-
-
     def compute_loss(self, image, context, target):
-        mask = self.compute_mask(target)
         source = self.encode_image(image, context)
         target = self.encode_text(target)
         source = source / source.norm(dim=-1, keepdim=True)
         target = target / target.norm(dim=-1, keepdim=True)
-        return self.loss.loss(source, target, mask, device=self.device)
+        return self.loss.loss(source, target, device=self.device)
 
     def unpack(self, batch):
         x, y = batch
